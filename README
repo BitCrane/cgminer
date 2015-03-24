@@ -1,3 +1,31 @@
+This is a special version cgminer, it shows the temperature of 4 dies of a BitCrane Ultra Hoist Mining Module individually.
+when trying to tweak the Module, this feature can bring much convenience.
+Instead of a prolonged description of very detail of cgmienr. Here gives a short download and compile guide for beginner.
+The command listed below have been tested in Ubuntu 14.04LTS.
+"
+sudo apt-get install git
+sudo apt-get install libghc-ncurses-dev
+sudo apt-get install autoconf libtool libcurl4-openssl-dev libudev-dev libusb-dev libusb-1.0.0-dev
+git clone https://github.com/hashfast/cgminer.git
+
+cd cgminer
+sudo cp  01-cgminer.rules /etc/udev/rules.d/.
+sudo service udev restart
+./autogen.sh
+CFLAGS="-O2 -Wall -march=native"
+./configure --enable-hashfast
+make
+cd ..
+git clone https://github.com/hashfast/hashfast-tools.git
+cd hashfast-tools
+make
+cd ..
+make install
+"
+
+
+
+
 This is a multi-threaded multi-pool FPGA and ASIC miner for bitcoin.
 
 This code is provided entirely free of charge by the programmer in his spare
