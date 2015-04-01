@@ -19,6 +19,7 @@
 
 #include "driver-hashfast.h"
 
+#define HF_USB_TIMEOUT 500
 int opt_hfa_ntime_roll = 1;
 int opt_hfa_hash_clock = HFA_CLOCK_DEFAULT;
 int opt_hfa_overheat = HFA_TEMP_OVERHEAT;
@@ -162,7 +163,8 @@ static bool __hfa_send_frame(struct cgpu_info *hashfast, uint8_t opcode, int tx_
 	info->last_send = time(NULL);
 	applog(LOG_DEBUG, "%s %s: Sending %s frame", hashfast->drv->name, hashfast->unique_id, hfa_cmds[opcode].cmd_name);
 retry:
-	ret = usb_write_timeout(hashfast, (char *)packet, tx_length, &amount, HFA_USB_TIMEOUT, hfa_cmds[opcode].usb_cmd);
+	ret = usb_write_timeout(hashfast, (char *)packet, tx_length, &amount,
+			HF_USB_TIMEOUT, hfa_cmds[opcode].usb_cmd);
 	if (unlikely(ret < 0 || amount != tx_length)) {
 		if (hashfast->usbinfo.nodev)
 			return false;
@@ -216,7 +218,7 @@ static bool hfa_send_packet(struct cgpu_info *hashfast, struct hf_header *h, int
 		return false;
 
 	len = sizeof(*h) + h->data_length * 4;
-	ret = usb_write_timeout(hashfast, (char *)h, len, &amount, HFA_USB_TIMEOUT, hfa_cmds[cmd].usb_cmd);
+	ret = usb_write_timeout(hashfast, (char *)h, len, &amount, HF_USB_TIMEOUT, hfa_cmds[cmd].usb_cmd);
 	if (ret < 0 || amount != len) {
 		applog(LOG_WARNING, "%s %s: send_packet: %s USB Send error, ret %d amount %d vs. length %d",
 		       hashfast->drv->name, hashfast->unique_id, hfa_cmds[cmd].cmd_name, ret, amount, len);
@@ -254,9 +256,9 @@ static bool hfa_get_header(struct cgpu_info *hashfast, struct hf_header *h, uint
 		if (unlikely(hashfast->usbinfo.nodev))
 			return false;
 		if(ofs + len > HFA_GET_HEADER_BUFSIZE) {
-		  // Not expected to happen.
-		  applog(LOG_WARNING, "hfa_get_header() tried to overflow buf[].");
-		  return false;
+			// Not expected to happen.
+			applog(LOG_WARNING, "hfa_get_header() tried to overflow buf[].");
+			return false;
 		}
 		ret = usb_read(hashfast, buf + ofs, len, &amount, C_HF_GETHEADER);
 
@@ -399,7 +401,6 @@ static bool hfa_reset(struct cgpu_info *hashfast, struct hashfast_info *info)
 	hu->protocol = PROTOCOL_GLOBAL_WORK_QUEUE;	// Protocol to use
 	if (!opt_hfa_noshed)
 		hu->shed_supported = true;
-
 	// Force PLL bypass
 	hu->pll_bypass = opt_hfa_pll_bypass;
 	hu->hash_clock = info->hash_clock_rate;		// Hash clock rate in Mhz
@@ -541,6 +542,10 @@ tryagain:
 		goto out;
 	}
 
+	if (opt_hfa_init_only) {
+            exit(1);
+        }
+
 	if (!db->hash_clockrate) {
 		applog(LOG_INFO, "%s %s: OP_USB_INIT failed! Clockrate reported as zero",
 		       hashfast->drv->name, hashfast->unique_id);
@@ -550,10 +555,6 @@ tryagain:
 	info->num_sequence = db->sequence_modulus;
 	info->serial_number = db->serial_number;
 	info->base_clock = db->hash_clockrate;
-
-	if (opt_hfa_init_only) {
-		exit(1);
-	}
 
 	ret = hfa_clear_readbuf(hashfast);
 out:
@@ -1129,19 +1130,20 @@ static void hfa_parse_nonce(struct thr_info *thr, struct cgpu_info *hashfast,
 		} else {
 			applog(LOG_DEBUG, "%s %s: OP_NONCE: sequence %d: submitting nonce 0x%08x ntime %d",
 			       hashfast->drv->name, hashfast->unique_id, n->sequence, n->nonce, n->ntime & HF_NTIME_MASK);
-			// Phony Emulator Nonce for development:
-			if ((n->nonce & 0xffff0000) == 0x42420000)
-				break;
-			if (submit_noffset_nonce(thr, work, n->nonce, n->ntime & HF_NTIME_MASK)) {
-				// Hash Audit
-				if(opt_hfa_hash_audit) {
+	                if (!test_nonce(work, n->nonce)) {
+                            applog(LOG_DEBUG, "%s %s: INVALID Nonce.  chip %d core %d nonce 0x%08x sequence %d", hashfast->drv->name, hashfast->unique_id, h->chip_address, h->core_address, n->nonce, n->sequence);
+                            inc_hw_errors(thr);
+                        }
+			else {
+				if(opt_hfa_hash_audit)
 					report_hash_audit_datapoint(hashfast, work->hash, work->device_diff);
+
+				if (submit_noffset_nonce(thr, work, n->nonce, n->ntime & HF_NTIME_MASK)) {
+					mutex_lock(&info->lock);
+					//info->hash_count += (uint64_t)0xffffffffull * (uint64_t)work->device_diff;
+					mutex_unlock(&info->lock);
+					applog(LOG_DEBUG, "%s %s: ACCEPTED Nonce.  chip %d core %d nonce 0x%08x sequence %d", hashfast->drv->name, hashfast->unique_id, h->chip_address, h->core_address, n->nonce, n->sequence);
 				}
-				mutex_lock(&info->lock);
-				//info->hash_count += (uint64_t)0xffffffffull * (uint64_t)work->device_diff;
-				mutex_unlock(&info->lock);
-			} else {
-				applog(LOG_DEBUG, "%s %s: INVALID Nonce: chip %d core %d nonce 0x%08x sequence %d", hashfast->drv->name, hashfast->unique_id, h->chip_address, h->core_address, n->nonce, n->sequence);
 			}
 #if 0	/* Not used */
 			if (unlikely(n->ntime & HF_NONCE_SEARCH)) {
@@ -1669,12 +1671,32 @@ dies_only:
 
 static void hfa_running_shutdown(struct cgpu_info *hashfast, struct hashfast_info *info)
 {
-	int iruntime = cgpu_runtime(hashfast);
+        // Commented out to stop warning due to pwh commented out code below.
+	// int iruntime = cgpu_runtime(hashfast);
 
 	/* If the device has already disapperaed, don't drop the clock in case
 	 * it was just unplugged as opposed to a failure. */
 	if (hashfast->usbinfo.nodev)
 		return;
+
+#if 0 /* pwh */
+	/* Only decrease the clock speed if the device has run at this speed
+	 * for less than an hour before failing, otherwise the hashrate gains
+	 * are worth the occasional restart which takes at most a minute. */
+	if (iruntime < 3600 && info->hash_clock_rate > HFA_CLOCK_DEFAULT && opt_hfa_fail_drop) {
+		info->hash_clock_rate -= opt_hfa_fail_drop;
+		if (info->hash_clock_rate < HFA_CLOCK_DEFAULT)
+			info->hash_clock_rate = HFA_CLOCK_DEFAULT;
+		if (info->old_cgpu && info->old_cgpu->device_data) {
+			struct hashfast_info *cinfo = info->old_cgpu->device_data;
+
+			// Set the master device's clock speed if this is a copy 
+			cinfo->hash_clock_rate = info->hash_clock_rate;
+		}
+		applog(LOG_WARNING, "%s %s: Decreasing clock speed to %d with reset",
+			hashfast->drv->name, hashfast->unique_id, info->hash_clock_rate);
+	}
+#endif /* pwh */
 
 	if (!hfa_send_shutdown(hashfast))
 		return;
@@ -1868,20 +1890,12 @@ static struct api_data *hfa_api_stats(struct cgpu_info *cgpu)
 	root = api_add_int(root, "max rx buf", &varint, true);
 
 	for (i = 0; i < info->asic_count; i++) {
-		struct hf_long_statistics *l;
-		struct hf_g1_die_data *d;
+		struct hf_long_statistics *l = &info->die_statistics[i];
+		struct hf_g1_die_data *d = &info->die_status[i];
 		char which[16];
 		double val;
 		int j;
 
-		if (!info->die_statistics || !info->die_status)
-			continue;
-		l = &info->die_statistics[i];
-		if (!l)
-			continue;
-		d = &info->die_status[i];
-		if (!d)
-			continue;
 		snprintf(which, sizeof(which), "Asic%d", i);
 
 		snprintf(buf, sizeof(buf), "%s hash clockrate", which);
@@ -1952,23 +1966,23 @@ static void hfa_statline_before(char *buf, size_t bufsiz, struct cgpu_info *hash
 			if (volt > max_volt)
 				max_volt = volt;
 		}
+
 		die_main_volt_sensor = GN_CORE_VOLTAGE(d->die.core_voltage[0]);
 		if (0.0 <= die_main_volt_sensor && die_main_volt_sensor < 1.0) {
-			unsigned int die_main_volt_sensor_two_digits = round(die_main_volt_sensor * 100.0);
-			tailsprintf(buf, bufsiz, "%3.0fC/.%uV", GN_DIE_TEMPERATURE(d->die.die_temperature), die_main_volt_sensor_two_digits);
-		} else {
-			tailsprintf(buf, bufsiz, "%3.0fC/%1.1fV", GN_DIE_TEMPERATURE(d->die.die_temperature), die_main_volt_sensor);
+                       unsigned int die_main_volt_sensor_two_digits = round(die_main_volt_sensor * 100.0);
+                       tailsprintf(buf, bufsiz, "%3.0fC/.%uV", GN_DIE_TEMPERATURE(d->die.die_temperature), die_main_volt_sensor_two_digits);
+		}else{
+                       tailsprintf(buf, bufsiz, "%3.0fC/%1.1fV", GN_DIE_TEMPERATURE(d->die.die_temperature), die_main_volt_sensor);
 		}
 	}
-	tailsprintf(buf, bufsiz, "%3d%%", info->fanspeed);
+//	tailsprintf(buf, bufsiz, "%3dMHz %3.0fC %3d%% %3.2fV", info->base_clock,
+//		    hashfast->temp, info->fanspeed, max_volt);
 	if (unlikely(hashfast->temp >= opt_hfa_overheat)) {
 		/* -1 means new overheat condition */
-		if (!info->overheat) {
+		if (!info->overheat)
 			info->overheat = -1;
-		}
-	} else if (unlikely(info->overheat)) {
+	} else if (unlikely(info->overheat))
 		info->overheat = 0;
-	}
 }
 
 /* We cannot re-initialise so just shut down the device for it to hotplug
@@ -2014,7 +2028,7 @@ struct device_drv hashfast_drv = {
 	.drv_id = DRIVER_hashfast,
 	.dname = "Hashfast",
 	.name = "HFA",
-	.max_diff = 32.0, // Limit max diff to get some nonces back regardless
+	.max_diff = 256.0, // Limit max diff to get some nonces back regardless
 	.drv_detect = hfa_detect,
 	.thread_init = hfa_init,
 	.hash_work = &hash_driver_work,
