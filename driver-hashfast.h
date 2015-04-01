@@ -18,13 +18,11 @@
 
 int opt_hfa_ntime_roll;
 int opt_hfa_hash_clock;
+bool opt_hfa_init_only;
 int opt_hfa_overheat;
 int opt_hfa_target;
-bool opt_hfa_init_only;
 bool opt_hfa_pll_bypass;
 bool opt_hfa_dfu_boot;
-bool opt_hfa_hash_audit;
-bool opt_hfa_audit_sd;
 int opt_hfa_fan_default;
 int opt_hfa_fan_max;
 int opt_hfa_fan_min;
@@ -41,14 +39,12 @@ char *opt_hfa_options;
 #define HFA_CLOCK_MIN 125
 #define HFA_CLOCK_MAX 1000
 #define HFA_CLOCK_MAXDIFF 100
-#define HFA_OVERHEAT_DEFAULT 100
 #define HFA_TEMP_OVERHEAT 104
 #define HFA_TEMP_TARGET 88
 #define HFA_TEMP_HYSTERESIS 2
 #define HFA_FAN_DEFAULT 25
 #define HFA_FAN_MAX 99
 #define HFA_FAN_MIN 10
-#define HFA_USB_TIMEOUT 500
 
 // Matching fields for hf_statistics, but large #s for local accumulation, per-die
 struct hf_long_statistics {
