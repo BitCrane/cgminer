@@ -1,8 +1,8 @@
 ##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##
 ##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##
 m4_define([v_maj], [4])
-m4_define([v_min], [4])
-m4_define([v_mic], [1])
+m4_define([v_min], [3])
+m4_define([v_mic], [3hf])
 ##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##
 m4_define([v_ver], [v_maj.v_min.v_mic])
 m4_define([lt_rev], m4_eval(v_maj + v_min))
@@ -129,21 +129,6 @@ if test "x$ants1" = xyes; then
 	AC_DEFINE([USE_ANT_S1], [1], [Defined to 1 if Antminer S1 Bitmain support is wanted])
 fi
 AM_CONDITIONAL([HAS_ANT_S1], [test x$ants1 = xyes])
-
-ants2="no"
-
-AC_ARG_ENABLE([ants2],
-	[AC_HELP_STRING([--enable-ants2],[Compile support for Antminer S2 Bitmain (default disabled)])],
-	[ants2=$enableval]
-	)
-if test "x$ants2" = xyes; then
-	AC_DEFINE([USE_ANT_S2], [1], [Defined to 1 if Antminer S2 Bitmain support is wanted])
-fi
-AM_CONDITIONAL([HAS_ANT_S2], [test x$ants2 = xyes])
-
-if test "x$ants1$ants2" = xyesyes; then
-	AC_MSG_ERROR([Only one of --enable-ants1 and --enable-ants2 allowed])
-fi
 
 avalon="no"
 
@@ -350,7 +335,7 @@ else
 	])
 fi
 
-if test x$avalon$bitforce$bitfury$modminer$bflsc$icarus$hashfast$klondike$drillbit$cointerra$ants1$ants2 != xnononononononononononono; then
+if test x$avalon$bitforce$bitfury$modminer$bflsc$icarus$hashfast$klondike$drillbit$cointerra$ants1 != xnonononononononononono; then
 	want_usbutils=true
 else
 	want_usbutils=false
@@ -536,12 +521,6 @@ else
 	echo "  Antminer.S1.Bitmain..: Disabled"
 fi
 
-if test "x$ants2" = xyes; then
-	echo "  Antminer.S2.Bitmain..: Enabled"
-else
-	echo "  Antminer.S2.Bitmain..: Disabled"
-fi
-
 if test "x$avalon" = xyes; then
 	echo "  Avalon.ASICs.........: Enabled"
 else
@@ -638,7 +617,7 @@ else
 	echo "  ModMiner.FPGAs.......: Disabled"
 fi
 
-if test "x$avalon$avalon2$bab$bflsc$bitforce$bitfury$hashfast$icarus$klondike$knc$modminer$drillbit$minion$cointerra$bitmine_A1$ants1$ants2$spondoolies" = xnononononononononononononononononono; then
+if test "x$avalon$avalon2$bab$bflsc$bitforce$bitfury$hashfast$icarus$klondike$knc$modminer$drillbit$minion$cointerra$bitmine_A1$ants1$spondoolies" = xnonononononononononononononononono; then
 	AC_MSG_ERROR([No mining configured in])
 fi
 
