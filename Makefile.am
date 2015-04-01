@@ -45,8 +45,6 @@ cgminer_SOURCES	+= logging.c
 
 cgminer_SOURCES	+= klist.h klist.c
 
-cgminer_SOURCES	+= noncedup.c
-
 if NEED_FPGAUTILS
 cgminer_SOURCES += fpgautils.c fpgautils.h
 endif
@@ -91,7 +89,6 @@ cgminer_SOURCES += A1-common.h
 cgminer_SOURCES += A1-board-selector.h
 cgminer_SOURCES += A1-board-selector-CCD.c A1-board-selector-CCR.c
 cgminer_SOURCES += A1-trimpot-mcp4x.h A1-trimpot-mcp4x.c
-cgminer_SOURCES += i2c-context.c i2c-context.h
 endif
 
 if HAS_DRILLBIT
@@ -128,10 +125,6 @@ cgminer_SOURCES += driver-minion.c
 endif
 
 if HAS_ANT_S1
-cgminer_SOURCES += driver-bitmain.c driver-bitmain.h
-endif
-
-if HAS_ANT_S2
 cgminer_SOURCES += driver-bitmain.c driver-bitmain.h
 endif
 
